@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  password      String
+  role          String    @default("pending")
+  approved      Boolean   @default(false)
+  color         String    @default("#64748b")
+  avatar        String    @default("")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  calendarEvents   CalendarEvent[] @relation("EventMember")
+  createdEvents    CalendarEvent[] @relation("EventCreator")
+  assignedTasks    Task[]          @relation("TaskAssignee")
+  createdTasks     Task[]          @relation("TaskCreator")
+  createdMeals     MealPlan[]      @relation("MealCreator")
+  bulletinPosts    BulletinPost[]  @relation("PostAuthor")
+  createdAgents    Agent[]         @relation("AgentCreator")
+
+  @@index([email])
+  @@index([approved])
+}
+
+model AIConfig {
+  id              String   @id @default("singleton")
+  apiKey          String   @default("")
+  selectedModel   String   @default("gpt-4o")
+  enabledModels   String   @default("[]")
+  availableModels String   @default("[]")
+  maxTokens       Int      @default(4096)
+  temperature     Float    @default(0.7)
+  updatedAt       DateTime @updatedAt
+}
+
+model CalendarEvent {
+  id         String   @id @default(cuid())
+  title      String
+  date       String
+  time       String   @default("")
+  endTime    String   @default("")
+  memberId   String
+  category   String   @default("other")
+  recurring  String   @default("")
+  notes      String   @default("")
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  member     User     @relation("EventMember", fields: [memberId], references: [id], onDelete: Restrict)
+  creator    User     @relation("EventCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([memberId])
+  @@index([createdBy])
+}
+
+model Task {
+  id         String   @id @default(cuid())
+  title      String
+  assignedTo String
+  dueDate    String   @default("")
+  completed  Boolean  @default(false)
+  category   String   @default("chore")
+  recurring  String   @default("")
+  createdBy  String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  assignee   User     @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: Restrict)
+  creator    User     @relation("TaskCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([assignedTo])
+  @@index([createdBy])
+  @@index([completed])
+}
+
+model ShoppingItem {
+  id        String   @id @default(cuid())
+  name      String
+  quantity  String   @default("")
+  category  String   @default("groceries")
+  addedBy   String
+  checked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([checked])
+}
+
+model MealPlan {
+  id       String   @id @default(cuid())
+  date     String
+  meal     String
+  recipe   String
+  prepBy   String   @default("")
+  notes    String   @default("")
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creator  User     @relation("MealCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([createdBy])
+}
+
+model BulletinPost {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  author    String
+  authorId  String
+  pinned    Boolean  @default(false)
+  category  String   @default("note")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authorUser User   @relation("PostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([authorId])
+  @@index([pinned])
+}
+
+model Agent {
+  id           String   @id @default(cuid())
+  name         String
+  description  String
+  systemPrompt String
+  icon         String   @default("Bot")
+  createdBy    String
+  isSystem     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  creator      User     @relation("AgentCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@index([isSystem])
+  @@index([createdBy])
+}
