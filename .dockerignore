@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.env
+.env.local
+.env.production
+*.db
+*.db-journal
+cookies.txt
+tsconfig.tsbuildinfo
+next-env.d.ts
+src/generated
