@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 
-const publicPaths = ['/login', '/register', '/offline'];
+const publicPaths = ['/login', '/register', '/offline', '/forgot-password', '/reset-password'];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();

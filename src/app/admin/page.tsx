@@ -3,10 +3,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Shield, Check, X, Trash2, UserCog, Users } from 'lucide-react';
+import { Shield, Check, X, Trash2, UserCog, Users, KeyRound, Copy, Clock } from 'lucide-react';
 import { ASSIGNABLE_ROLES, ROLES } from '@/lib/roles';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import { useToast } from '@/components/Toast';
+
+interface PasswordResetData {
+  id: string;
+  token: string;
+  expiresAt: string;
+  used: boolean;
+  createdAt: string;
+  user: { name: string; email: string };
+}
 
 interface UserData {
   id: string;
@@ -32,6 +41,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [resets, setResets] = useState<PasswordResetData[]>([]);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -47,13 +57,26 @@ export default function AdminPage() {
     }
   }, []);
 
+  const fetchResets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/password-resets');
+      if (res.ok) {
+        const data = await res.json();
+        setResets(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch resets:', error);
+    }
+  }, []);
+
   useEffect(() => {
     if (session?.user?.role !== 'superadmin') {
       router.push('/');
       return;
     }
     fetchUsers();
-  }, [session, router, fetchUsers]);
+    fetchResets();
+  }, [session, router, fetchUsers, fetchResets]);
 
   const updateUser = async (userId: string, data: Record<string, unknown>) => {
     try {
@@ -282,6 +305,67 @@ export default function AdminPage() {
         confirmLabel="Remove"
         confirmVariant="danger"
       />
+
+      {/* Password Reset Requests */}
+      {resets.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+            <KeyRound size={18} className="text-accent" />
+            Password Reset Requests ({resets.length})
+          </h2>
+          <div className="space-y-3">
+            {resets.map((reset) => {
+              const expired = new Date(reset.expiresAt) < new Date();
+              const resetUrl = `${window.location.origin}/reset-password?token=${reset.token}`;
+              return (
+                <div
+                  key={reset.id}
+                  className={`bg-surface border rounded-xl p-4 ${
+                    expired || reset.used ? 'border-border opacity-60' : 'border-accent/30 bg-accent/5'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center">
+                        <KeyRound size={16} className="text-accent" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{reset.user.name}</p>
+                        <p className="text-xs text-text-muted">{reset.user.email}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {reset.used ? (
+                          <span className="text-xs bg-success/10 text-success px-2 py-0.5 rounded-full">Used</span>
+                        ) : expired ? (
+                          <span className="text-xs bg-danger/10 text-danger px-2 py-0.5 rounded-full">Expired</span>
+                        ) : (
+                          <span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Clock size={10} /> Active
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {!expired && !reset.used && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(resetUrl);
+                          toast('Reset link copied to clipboard', 'success');
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors"
+                      >
+                        <Copy size={12} /> Copy Link
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-text-muted mt-2 flex items-center gap-1">
+                    Requested {new Date(reset.createdAt).toLocaleString()} &middot; Expires {new Date(reset.expiresAt).toLocaleString()}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Role Permissions Reference */}
       <div className="mt-8">
