@@ -9,7 +9,7 @@ export interface PaginationParams {
 /** Parse pagination query params with sensible defaults */
 export function parsePagination(req: NextRequest, defaultLimit = 100): PaginationParams {
   const url = new URL(req.url);
-  const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1);
+  const page = Math.min(10000, Math.max(1, parseInt(url.searchParams.get('page') || '1', 10) || 1));
   const limit = Math.min(500, Math.max(1, parseInt(url.searchParams.get('limit') || String(defaultLimit), 10) || defaultLimit));
   return { page, limit, skip: (page - 1) * limit };
 }

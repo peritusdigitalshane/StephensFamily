@@ -5,6 +5,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Shield, Check, X, Trash2, UserCog, Users } from 'lucide-react';
 import { ASSIGNABLE_ROLES, ROLES } from '@/lib/roles';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import { useToast } from '@/components/Toast';
 
 interface UserData {
   id: string;
@@ -25,9 +27,11 @@ const MEMBER_COLORS = [
 export default function AdminPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const { toast } = useToast();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -60,14 +64,17 @@ export default function AdminPage() {
       });
       if (res.ok) {
         fetchUsers();
+        if (data.role) {
+          toast(`Role updated to "${data.role}"`, 'success');
+        }
       }
     } catch (error) {
       console.error('Failed to update user:', error);
+      toast('Failed to update user', 'error');
     }
   };
 
   const deleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to remove this user?')) return;
     try {
       const res = await fetch('/api/admin/users', {
         method: 'DELETE',
@@ -76,14 +83,17 @@ export default function AdminPage() {
       });
       if (res.ok) {
         fetchUsers();
+        toast('User removed', 'success');
       }
     } catch (error) {
       console.error('Failed to delete user:', error);
+      toast('Failed to remove user', 'error');
     }
   };
 
   const approveUser = async (userId: string, role: string) => {
     await updateUser(userId, { approved: true, role });
+    toast(`User approved as "${role}"`, 'success');
     setEditingUser(null);
   };
 
@@ -159,7 +169,7 @@ export default function AdminPage() {
                           <Check size={14} /> Approve
                         </button>
                         <button
-                          onClick={() => deleteUser(user.id)}
+                          onClick={() => setDeleteTarget(user.id)}
                           className="bg-danger text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1 hover:bg-danger/80"
                         >
                           <X size={14} /> Reject
@@ -247,7 +257,7 @@ export default function AdminPage() {
                         ))}
                       </div>
                       <button
-                        onClick={() => deleteUser(user.id)}
+                        onClick={() => setDeleteTarget(user.id)}
                         className="p-1.5 text-danger hover:bg-danger/10 rounded"
                         title="Remove user"
                       >
@@ -261,6 +271,17 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+
+      {/* Delete User Confirm Dialog */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => { if (deleteTarget) deleteUser(deleteTarget); }}
+        title="Remove User"
+        message="Are you sure you want to remove this user? This action cannot be undone."
+        confirmLabel="Remove"
+        confirmVariant="danger"
+      />
 
       {/* Role Permissions Reference */}
       <div className="mt-8">

@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
         name,
         quantity: sanitizeString(body.quantity, 50),
         category: sanitizeString(body.category, 50) || 'groceries',
-        addedBy: auth.user.name,
+        addedBy: auth.user.id,
         checked: false,
       },
     });
@@ -74,7 +74,7 @@ export async function PATCH(req: NextRequest) {
     if (!existing) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
 
     // Ownership check for 'own' permission level
-    if (auth.perms.shopping === 'own' && existing.addedBy !== auth.user.name) {
+    if (auth.perms.shopping === 'own' && existing.addedBy !== auth.user.id) {
       return forbiddenResponse();
     }
 
@@ -99,7 +99,7 @@ export async function DELETE(req: NextRequest) {
     // Ownership check for 'own' permission level
     const existing = await prisma.shoppingItem.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: 'Item not found' }, { status: 404 });
-    if (auth.perms.shopping === 'own' && existing.addedBy !== auth.user.name) {
+    if (auth.perms.shopping === 'own' && existing.addedBy !== auth.user.id) {
       return forbiddenResponse();
     }
 

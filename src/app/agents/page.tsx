@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { Bot, Plus, X, Trash2, Pencil, MessageCircle, Home, BookOpen, Sparkles } from 'lucide-react';
+import { useToast } from '@/components/Toast';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface Agent {
   id: string;
@@ -26,11 +28,19 @@ const emptyForm = { name: '', description: '', systemPrompt: '', icon: 'Bot' };
 
 export default function AgentsPage() {
   const { data: session } = useSession();
+  const { toast } = useToast();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editAgent, setEditAgent] = useState<Agent | null>(null);
   const [form, setForm] = useState(emptyForm);
+
+  // Confirm dialog state
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; agentId: string; agentName: string }>({
+    open: false,
+    agentId: '',
+    agentName: '',
+  });
 
   const fetchAgents = useCallback(async () => {
     try {
@@ -56,30 +66,59 @@ export default function AgentsPage() {
 
   const handleSave = async () => {
     if (!form.name || !form.systemPrompt) return;
-    if (editAgent) {
-      await fetch('/api/agents', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editAgent.id, ...form }),
-      });
-    } else {
-      await fetch('/api/agents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
+    try {
+      if (editAgent) {
+        const res = await fetch('/api/agents', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editAgent.id, ...form }),
+        });
+        if (res.ok) {
+          toast('Agent updated successfully', 'success');
+        } else {
+          toast('Failed to update agent', 'error');
+        }
+      } else {
+        const res = await fetch('/api/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        });
+        if (res.ok) {
+          toast('Agent created successfully', 'success');
+        } else {
+          toast('Failed to create agent', 'error');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to save agent:', err);
+      toast('Failed to save agent', 'error');
     }
     setShowModal(false);
     fetchAgents();
   };
 
   const handleDelete = async (id: string) => {
-    await fetch('/api/agents', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    });
+    try {
+      const res = await fetch('/api/agents', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        toast('Agent deleted', 'success');
+      } else {
+        toast('Failed to delete agent', 'error');
+      }
+    } catch (err) {
+      console.error('Failed to delete agent:', err);
+      toast('Failed to delete agent', 'error');
+    }
     fetchAgents();
+  };
+
+  const promptDeleteAgent = (id: string, name: string) => {
+    setConfirmDelete({ open: true, agentId: id, agentName: name });
   };
 
   const systemAgents = agents.filter((a) => a.isSystem);
@@ -113,7 +152,7 @@ export default function AgentsPage() {
               <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Built-in Agents</h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {systemAgents.map((agent) => (
-                  <AgentCard key={agent.id} agent={agent} onEdit={openEdit} onDelete={handleDelete} />
+                  <AgentCard key={agent.id} agent={agent} onEdit={openEdit} onDelete={promptDeleteAgent} />
                 ))}
               </div>
             </div>
@@ -134,7 +173,7 @@ export default function AgentsPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {customAgents.map((agent) => (
-                  <AgentCard key={agent.id} agent={agent} onEdit={openEdit} onDelete={handleDelete} />
+                  <AgentCard key={agent.id} agent={agent} onEdit={openEdit} onDelete={promptDeleteAgent} />
                 ))}
               </div>
             )}
@@ -176,11 +215,22 @@ export default function AgentsPage() {
           </div>
         </div>
       )}
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onClose={() => setConfirmDelete({ open: false, agentId: '', agentName: '' })}
+        onConfirm={() => handleDelete(confirmDelete.agentId)}
+        title="Delete Agent"
+        message={`Are you sure you want to delete "${confirmDelete.agentName}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }
 
-function AgentCard({ agent, onEdit, onDelete }: { agent: Agent; onEdit: (a: Agent) => void; onDelete: (id: string) => void }) {
+function AgentCard({ agent, onEdit, onDelete }: { agent: Agent; onEdit: (a: Agent) => void; onDelete: (id: string, name: string) => void }) {
   return (
     <div className="bg-surface rounded-2xl border border-border p-5 card-hover group">
       <div className="flex items-start justify-between mb-3">
@@ -192,7 +242,7 @@ function AgentCard({ agent, onEdit, onDelete }: { agent: Agent; onEdit: (a: Agen
             <Pencil size={13} />
           </button>
           {!agent.isSystem && (
-            <button onClick={() => onDelete(agent.id)} className="p-1.5 rounded-lg hover:bg-danger/10 text-danger">
+            <button onClick={() => onDelete(agent.id, agent.name)} className="p-1.5 rounded-lg hover:bg-danger/10 text-danger">
               <Trash2 size={13} />
             </button>
           )}

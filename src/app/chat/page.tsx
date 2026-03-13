@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Send, Bot, Trash2, Loader2, Sparkles } from 'lucide-react';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 interface Agent {
   id: string;
@@ -20,6 +21,8 @@ interface ChatMsg {
   content: string;
 }
 
+const MAX_INPUT_LENGTH = 2000;
+
 function ChatContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
@@ -30,6 +33,7 @@ function ChatContent() {
   const [messages, setMessages] = useState<Record<string, ChatMsg[]>>({});
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -60,9 +64,10 @@ function ChatContent() {
   const currentMessages = messages[selectedAgentId] || [];
   const agent = agents.find((a) => a.id === selectedAgentId);
 
+  // Auto-scroll to bottom when new messages arrive or loading state changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentMessages]);
+  }, [currentMessages, isLoading]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
@@ -126,7 +131,15 @@ function ChatContent() {
           >
             {agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
-          <button onClick={clearChat} className="p-2 text-text-muted hover:text-danger hover:bg-danger/10 rounded-xl transition-colors" title="Clear chat">
+          <button
+            onClick={() => {
+              if (currentMessages.length > 0) {
+                setShowClearConfirm(true);
+              }
+            }}
+            className="p-2 text-text-muted hover:text-danger hover:bg-danger/10 rounded-xl transition-colors"
+            title="Clear chat"
+          >
             <Trash2 size={16} />
           </button>
         </div>
@@ -191,10 +204,13 @@ function ChatContent() {
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500/10 to-purple-500/10 flex items-center justify-center shrink-0">
               <Bot size={14} className="text-indigo-500" />
             </div>
-            <div className="bg-surface border border-border rounded-2xl px-4 py-3 flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-text-muted typing-dot" />
-              <div className="w-1.5 h-1.5 rounded-full bg-text-muted typing-dot" />
-              <div className="w-1.5 h-1.5 rounded-full bg-text-muted typing-dot" />
+            <div className="bg-surface border border-border rounded-2xl px-4 py-3 flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <span className="text-xs text-text-muted ml-1">Thinking...</span>
             </div>
           </div>
         )}
@@ -203,25 +219,50 @@ function ChatContent() {
 
       {/* Input */}
       <div className="bg-surface border-t border-border p-4 shrink-0">
-        <div className="max-w-3xl mx-auto flex gap-3">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-            placeholder={`Message ${agent?.name || 'assistant'}...`}
-            className="flex-1 border border-border rounded-xl px-4 py-3 text-sm bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-            rows={1}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading}
-            className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 rounded-xl hover:shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-          >
-            <Send size={18} />
-          </button>
+        <div className="max-w-3xl mx-auto">
+          <div className="flex gap-3">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => {
+                if (e.target.value.length <= MAX_INPUT_LENGTH) {
+                  setInput(e.target.value);
+                }
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              placeholder={`Message ${agent?.name || 'assistant'}...`}
+              className="flex-1 border border-border rounded-xl px-4 py-3 text-sm bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+              rows={1}
+              maxLength={MAX_INPUT_LENGTH}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isLoading}
+              className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white px-4 rounded-xl hover:shadow-lg hover:shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              <Send size={18} />
+            </button>
+          </div>
+          {input.length > 0 && (
+            <div className="flex justify-end mt-1.5">
+              <span className={`text-[11px] ${input.length > MAX_INPUT_LENGTH * 0.9 ? 'text-amber-500' : 'text-text-muted'}`}>
+                {input.length}/{MAX_INPUT_LENGTH}
+              </span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Clear Chat Confirmation */}
+      <ConfirmDialog
+        open={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={clearChat}
+        title="Clear Chat"
+        message="Are you sure you want to clear this conversation? All messages will be lost."
+        confirmLabel="Clear"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

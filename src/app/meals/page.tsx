@@ -9,8 +9,12 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  Loader2,
 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useToast } from '@/components/Toast';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import {
   format,
   startOfWeek,
@@ -50,6 +54,7 @@ const mealTypeLabels: Record<MealType, string> = {
 
 export default function MealsPage() {
   const { data: session } = useSession();
+  const { toast } = useToast();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [weekStart, setWeekStart] = useState(
@@ -61,6 +66,14 @@ export default function MealsPage() {
   const [modalMealType, setModalMealType] = useState<MealType>('dinner');
   const [form, setForm] = useState({ recipe: '', prepBy: '', notes: '' });
   const [loading, setLoading] = useState(true);
+  const [copying, setCopying] = useState(false);
+
+  // Confirm dialog state
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; mealId: string; mealName: string }>({
+    open: false,
+    mealId: '',
+    mealName: '',
+  });
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -157,10 +170,14 @@ export default function MealsPage() {
       });
       if (res.ok) {
         await fetchMeals();
+        toast('Meal added successfully', 'success');
         closeModal();
+      } else {
+        toast('Failed to add meal', 'error');
       }
     } catch (err) {
       console.error('Failed to create meal:', err);
+      toast('Failed to add meal', 'error');
     }
   };
 
@@ -180,10 +197,14 @@ export default function MealsPage() {
       });
       if (res.ok) {
         await fetchMeals();
+        toast('Meal updated successfully', 'success');
         closeModal();
+      } else {
+        toast('Failed to update meal', 'error');
       }
     } catch (err) {
       console.error('Failed to update meal:', err);
+      toast('Failed to update meal', 'error');
     }
   };
 
@@ -197,10 +218,18 @@ export default function MealsPage() {
       });
       if (res.ok) {
         await fetchMeals();
+        toast('Meal deleted', 'success');
+      } else {
+        toast('Failed to delete meal', 'error');
       }
     } catch (err) {
       console.error('Failed to delete meal:', err);
+      toast('Failed to delete meal', 'error');
     }
+  };
+
+  const promptDeleteMeal = (id: string, name: string) => {
+    setConfirmDelete({ open: true, mealId: id, mealName: name });
   };
 
   const handleSubmit = () => {
@@ -208,6 +237,70 @@ export default function MealsPage() {
       handleUpdate();
     } else {
       handleCreate();
+    }
+  };
+
+  // Copy previous week's meals
+  const handleCopyPreviousWeek = async () => {
+    const prevWeekStart = subWeeks(weekStart, 1);
+    const prevWeekDays = Array.from({ length: 7 }, (_, i) => addDays(prevWeekStart, i));
+
+    // Find meals from previous week
+    const prevWeekMeals = meals.filter((m) => {
+      try {
+        return prevWeekDays.some((d) => m.date === format(d, 'yyyy-MM-dd'));
+      } catch {
+        return false;
+      }
+    });
+
+    if (prevWeekMeals.length === 0) {
+      toast('No meals found in the previous week to copy', 'warning');
+      return;
+    }
+
+    setCopying(true);
+    let created = 0;
+    let failed = 0;
+
+    for (const meal of prevWeekMeals) {
+      try {
+        // Calculate the corresponding day in the current week
+        const mealDate = parseISO(meal.date);
+        const prevStart = startOfWeek(mealDate, { weekStartsOn: 1 });
+        const dayOffset = Math.round((mealDate.getTime() - prevStart.getTime()) / (1000 * 60 * 60 * 24));
+        const newDate = format(addDays(weekStart, dayOffset), 'yyyy-MM-dd');
+
+        const res = await fetch('/api/meals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date: newDate,
+            meal: meal.meal,
+            recipe: meal.recipe,
+            prepBy: meal.prepBy || undefined,
+            notes: meal.notes || undefined,
+          }),
+        });
+        if (res.ok) {
+          created++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    await fetchMeals();
+    setCopying(false);
+
+    if (created > 0 && failed === 0) {
+      toast(`Copied ${created} meal${created !== 1 ? 's' : ''} from last week`, 'success');
+    } else if (created > 0 && failed > 0) {
+      toast(`Copied ${created} meal${created !== 1 ? 's' : ''}, ${failed} failed`, 'warning');
+    } else {
+      toast('Failed to copy meals from previous week', 'error');
     }
   };
 
@@ -237,10 +330,21 @@ export default function MealsPage() {
           >
             <ChevronLeft size={20} />
           </button>
-          <h2 className="font-semibold text-base">
-            {format(weekStart, 'd MMM')} &ndash;{' '}
-            {format(addDays(weekStart, 6), 'd MMM yyyy')}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="font-semibold text-base">
+              {format(weekStart, 'd MMM')} &ndash;{' '}
+              {format(addDays(weekStart, 6), 'd MMM yyyy')}
+            </h2>
+            <button
+              onClick={handleCopyPreviousWeek}
+              disabled={copying}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border border-border hover:border-purple-300 hover:bg-purple-50 hover:text-purple-600 text-text-muted transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Copy meals from previous week"
+            >
+              {copying ? <Loader2 size={13} className="animate-spin" /> : <Copy size={13} />}
+              Copy Previous Week
+            </button>
+          </div>
           <button
             onClick={() => setWeekStart(addWeeks(weekStart, 1))}
             className="p-2.5 hover:bg-surface-hover rounded-xl transition-colors"
@@ -369,7 +473,7 @@ export default function MealsPage() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleDelete(m.id);
+                                    promptDeleteMeal(m.id, m.recipe);
                                   }}
                                   className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-lg bg-white/80 text-red-400 hover:text-red-600 hover:bg-red-50"
                                 >
@@ -469,7 +573,7 @@ export default function MealsPage() {
                 {editingMeal && (
                   <button
                     onClick={() => {
-                      handleDelete(editingMeal.id);
+                      promptDeleteMeal(editingMeal.id, editingMeal.recipe);
                       closeModal();
                     }}
                     className="px-4 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 border border-red-200 transition-colors flex items-center gap-1.5"
@@ -487,6 +591,17 @@ export default function MealsPage() {
                 </button>
               </div>
       </Modal>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onClose={() => setConfirmDelete({ open: false, mealId: '', mealName: '' })}
+        onConfirm={() => handleDelete(confirmDelete.mealId)}
+        title="Delete Meal"
+        message={`Are you sure you want to delete "${confirmDelete.mealName}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

@@ -15,8 +15,12 @@ import {
   ArrowRight,
   Sparkles,
   TrendingUp,
+  RefreshCw,
+  ClipboardList,
+  Users,
 } from 'lucide-react';
-import { format, isToday, parseISO } from 'date-fns';
+import { format, isToday, parseISO, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
+import { useToast } from '@/components/Toast';
 
 interface Member { id: string; name: string; role: string; color: string; avatar: string; }
 interface Event { id: string; title: string; date: string; time: string; endTime: string; memberId: string; category: string; }
@@ -36,14 +40,17 @@ const quickLinks = [
 
 export default function Dashboard() {
   const { data: session } = useSession();
+  const { toast } = useToast();
   const [members, setMembers] = useState<Member[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [shopping, setShopping] = useState<ShoppingItem[]>([]);
   const [posts, setPosts] = useState<BulletinPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
     const safeJson = async (r: Response) => {
       if (!r.ok) return [];
       const data = await r.json();
@@ -58,7 +65,11 @@ export default function Dashboard() {
     ]);
     setMembers(m); setEvents(e); setTasks(t); setShopping(s); setPosts(p);
     setLoading(false);
-  }, []);
+    if (isRefresh) {
+      setRefreshing(false);
+      toast('Dashboard refreshed', 'success');
+    }
+  }, [toast]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -68,12 +79,30 @@ export default function Dashboard() {
   const uncheckedShopping = shopping.filter((i) => !i.checked);
   const pinnedPosts = posts.filter((p) => p.pinned);
 
+  // Weekly events count for stats
+  const now = new Date();
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+  const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+  const weekEvents = events.filter((e) => {
+    try {
+      const d = parseISO(e.date);
+      return isWithinInterval(d, { start: weekStart, end: weekEnd });
+    } catch { return false; }
+  });
+
   const getMemberName = (id: string) => members.find((m) => m.id === id)?.name || id;
   const getMemberColor = (id: string) => members.find((m) => m.id === id)?.color || '#64748b';
 
   const userName = session?.user?.name || 'there';
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  const dashboardCards = [
+    { id: 'schedule', delay: 0 },
+    { id: 'tasks', delay: 50 },
+    { id: 'shopping', delay: 100 },
+    { id: 'bulletin', delay: 150 },
+  ];
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -82,9 +111,19 @@ export default function Dashboard() {
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/3" />
         <div className="absolute bottom-0 left-1/3 w-48 h-48 bg-white/5 rounded-full translate-y-1/2" />
         <div className="relative z-10">
-          <div className="flex items-center gap-2 text-white/70 text-sm font-medium mb-2">
-            <Sparkles size={14} />
-            {format(new Date(), 'EEEE, d MMMM yyyy')}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2 text-white/70 text-sm font-medium">
+              <Sparkles size={14} />
+              {format(new Date(), 'EEEE, d MMMM yyyy')}
+            </div>
+            <button
+              onClick={() => fetchAll(true)}
+              disabled={refreshing}
+              className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors disabled:opacity-50"
+              title="Refresh dashboard"
+            >
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+            </button>
           </div>
           <h1 className="text-3xl font-bold mb-1">{greeting}, {userName}!</h1>
           <p className="text-white/70 text-sm">Here&apos;s what&apos;s happening with the Stephens family today.</p>
@@ -102,6 +141,30 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Quick Stats Row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+        {[
+          { icon: Calendar, val: weekEvents.length, label: 'Events this week', gradient: 'from-emerald-500/15 to-teal-500/15', border: 'border-emerald-500/20', iconColor: 'text-emerald-500' },
+          { icon: ClipboardList, val: pendingTasks.length, label: 'Pending tasks', gradient: 'from-amber-500/15 to-orange-500/15', border: 'border-amber-500/20', iconColor: 'text-amber-500' },
+          { icon: ShoppingCart, val: uncheckedShopping.length, label: 'Shopping items', gradient: 'from-pink-500/15 to-rose-500/15', border: 'border-pink-500/20', iconColor: 'text-pink-500' },
+          { icon: Users, val: members.length, label: 'Family members', gradient: 'from-indigo-500/15 to-purple-500/15', border: 'border-indigo-500/20', iconColor: 'text-indigo-500' },
+        ].map(({ icon: Icon, val, label, gradient, border, iconColor }, i) => (
+          <div
+            key={label}
+            className={`animate-fade-in-up bg-gradient-to-br ${gradient} rounded-2xl border ${border} p-5 flex items-center gap-4`}
+            style={{ animationDelay: `${i * 50}ms`, animationFillMode: 'both' }}
+          >
+            <div className={`w-10 h-10 rounded-xl bg-surface flex items-center justify-center shrink-0 ${iconColor}`}>
+              <Icon size={18} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{val}</p>
+              <p className="text-xs text-text-muted font-medium">{label}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Quick Links */}
@@ -122,7 +185,10 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Today's Schedule */}
-        <div className="bg-surface rounded-2xl border border-border p-6 card-hover">
+        <div
+          className="bg-surface rounded-2xl border border-border p-6 card-hover animate-fade-in-up"
+          style={{ animationDelay: `${dashboardCards[0].delay}ms`, animationFillMode: 'both' }}
+        >
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-semibold text-base flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center"><Clock size={14} className="text-white" /></div>
@@ -133,7 +199,10 @@ export default function Dashboard() {
           {todayEvents.length === 0 ? (
             <div className="py-6 text-center">
               <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center mx-auto mb-2"><Calendar size={20} className="text-emerald-400" /></div>
-              <p className="text-text-muted text-sm">Nothing scheduled today</p>
+              <p className="text-text-muted text-sm mb-2">Nothing scheduled today. Plan something!</p>
+              <Link href="/calendar" className="text-xs font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">
+                Open Calendar &rarr;
+              </Link>
             </div>
           ) : (
             <div className="space-y-2.5">
@@ -152,7 +221,10 @@ export default function Dashboard() {
         </div>
 
         {/* Tasks */}
-        <div className="bg-surface rounded-2xl border border-border p-6 card-hover">
+        <div
+          className="bg-surface rounded-2xl border border-border p-6 card-hover animate-fade-in-up"
+          style={{ animationDelay: `${dashboardCards[1].delay}ms`, animationFillMode: 'both' }}
+        >
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-semibold text-base flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center"><CheckSquare size={14} className="text-white" /></div>
@@ -163,7 +235,10 @@ export default function Dashboard() {
           {pendingTasks.length === 0 ? (
             <div className="py-6 text-center">
               <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center mx-auto mb-2"><CheckSquare size={20} className="text-amber-400" /></div>
-              <p className="text-text-muted text-sm">All tasks done!</p>
+              <p className="text-text-muted text-sm mb-2">All caught up! Nice work.</p>
+              <Link href="/tasks" className="text-xs font-semibold text-amber-600 hover:text-amber-700 transition-colors">
+                Manage Tasks &rarr;
+              </Link>
             </div>
           ) : (
             <div className="space-y-2">
@@ -179,7 +254,10 @@ export default function Dashboard() {
         </div>
 
         {/* Shopping */}
-        <div className="bg-surface rounded-2xl border border-border p-6 card-hover">
+        <div
+          className="bg-surface rounded-2xl border border-border p-6 card-hover animate-fade-in-up"
+          style={{ animationDelay: `${dashboardCards[2].delay}ms`, animationFillMode: 'both' }}
+        >
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-semibold text-base flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center"><ShoppingCart size={14} className="text-white" /></div>
@@ -190,7 +268,10 @@ export default function Dashboard() {
           {uncheckedShopping.length === 0 ? (
             <div className="py-6 text-center">
               <div className="w-12 h-12 rounded-xl bg-pink-50 flex items-center justify-center mx-auto mb-2"><ShoppingCart size={20} className="text-pink-400" /></div>
-              <p className="text-text-muted text-sm">Shopping list is empty</p>
+              <p className="text-text-muted text-sm mb-2">Shopping list is empty. Add items!</p>
+              <Link href="/shopping" className="text-xs font-semibold text-pink-600 hover:text-pink-700 transition-colors">
+                Open Shopping List &rarr;
+              </Link>
             </div>
           ) : (
             <div className="space-y-2">
@@ -207,7 +288,10 @@ export default function Dashboard() {
         </div>
 
         {/* Bulletin */}
-        <div className="bg-surface rounded-2xl border border-border p-6 card-hover">
+        <div
+          className="bg-surface rounded-2xl border border-border p-6 card-hover animate-fade-in-up"
+          style={{ animationDelay: `${dashboardCards[3].delay}ms`, animationFillMode: 'both' }}
+        >
           <div className="flex items-center justify-between mb-5">
             <h2 className="font-semibold text-base flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center"><Megaphone size={14} className="text-white" /></div>
@@ -218,7 +302,10 @@ export default function Dashboard() {
           {posts.length === 0 ? (
             <div className="py-6 text-center">
               <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center mx-auto mb-2"><Megaphone size={20} className="text-red-400" /></div>
-              <p className="text-text-muted text-sm">No announcements yet</p>
+              <p className="text-text-muted text-sm mb-2">No announcements yet. Post one!</p>
+              <Link href="/bulletin" className="text-xs font-semibold text-red-600 hover:text-red-700 transition-colors">
+                Go to Bulletin &rarr;
+              </Link>
             </div>
           ) : (
             <div className="space-y-3">

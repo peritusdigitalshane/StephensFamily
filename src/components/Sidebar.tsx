@@ -21,7 +21,7 @@ import {
   User,
 } from 'lucide-react';
 import { hasAccess } from '@/lib/roles';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: Home, feature: null },
@@ -43,6 +43,20 @@ export function Sidebar() {
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  // Close mobile menu on ESC key
+  const handleEscKey = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setMobileOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mobileOpen) {
+      document.addEventListener('keydown', handleEscKey);
+      return () => document.removeEventListener('keydown', handleEscKey);
+    }
+  }, [mobileOpen, handleEscKey]);
 
   if (!session?.user) return null;
 
@@ -89,6 +103,7 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={isActive ? 'page' : undefined}
                 className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-xl transition-all duration-200 ${
                   isActive
                     ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/10 text-white shadow-sm'
@@ -125,6 +140,7 @@ export function Sidebar() {
                   <Link
                     key={item.href}
                     href={item.href}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`flex items-center gap-3 px-3 py-2.5 text-sm rounded-xl transition-all duration-200 ${
                       isActive
                         ? 'bg-gradient-to-r from-indigo-500/20 to-purple-500/10 text-white shadow-sm'
@@ -165,14 +181,14 @@ export function Sidebar() {
             <Link
               href="/profile"
               className="p-2 hover:bg-white/10 rounded-lg text-sidebar-text/40 hover:text-white transition-colors"
-              title="Profile"
+              aria-label="Profile"
             >
               <User size={16} />
             </Link>
             <button
               onClick={() => signOut({ callbackUrl: '/login' })}
               className="p-2 hover:bg-white/10 rounded-lg text-sidebar-text/40 hover:text-white transition-colors"
-              title="Sign Out"
+              aria-label="Sign Out"
             >
               <LogOut size={16} />
             </button>

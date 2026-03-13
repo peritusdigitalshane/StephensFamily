@@ -46,8 +46,8 @@ export async function PATCH(req: NextRequest) {
     if (body.apiKey !== undefined) updateData.apiKey = body.apiKey;
     if (body.selectedModel !== undefined) updateData.selectedModel = body.selectedModel;
     if (body.enabledModels !== undefined) updateData.enabledModels = JSON.stringify(body.enabledModels);
-    if (body.maxTokens !== undefined) updateData.maxTokens = body.maxTokens;
-    if (body.temperature !== undefined) updateData.temperature = body.temperature;
+    if (body.maxTokens !== undefined) updateData.maxTokens = Math.min(128000, Math.max(256, Number(body.maxTokens) || 4096));
+    if (body.temperature !== undefined) updateData.temperature = Math.min(2, Math.max(0, Number(body.temperature) || 0.7));
 
     const config = await prisma.aIConfig.upsert({
       where: { id: 'singleton' },

@@ -15,8 +15,10 @@ import {
   ListChecks,
   ClipboardList,
   X,
+  Search,
 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useToast } from '@/components/Toast';
 import { format, parseISO, isToday, isTomorrow, isPast } from 'date-fns';
 
 interface Task {
@@ -64,6 +66,7 @@ const emptyForm = {
 
 export default function TasksPage() {
   const { data: session } = useSession();
+  const { toast } = useToast();
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -73,6 +76,7 @@ export default function TasksPage() {
   // Filters
   const [filterMember, setFilterMember] = useState<string>('all');
   const [showCompleted, setShowCompleted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Create modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -130,10 +134,12 @@ export default function TasksPage() {
         }),
       });
       await fetchTasks();
+      toast(`Task "${createForm.title.trim()}" created`, 'success');
       setCreateForm({ ...emptyForm, assignedTo: members[0]?.id ?? '' });
       setShowCreateModal(false);
     } catch (err) {
       console.error('Failed to create task', err);
+      toast('Failed to create task', 'error');
     } finally {
       setSaving(false);
     }
@@ -156,9 +162,11 @@ export default function TasksPage() {
         }),
       });
       await fetchTasks();
+      toast('Task updated', 'success');
       setShowEditModal(false);
     } catch (err) {
       console.error('Failed to update task', err);
+      toast('Failed to update task', 'error');
     } finally {
       setSaving(false);
     }
@@ -172,6 +180,7 @@ export default function TasksPage() {
         body: JSON.stringify({ id: task.id, completed: !task.completed }),
       });
       await fetchTasks();
+      toast(task.completed ? `"${task.title}" marked incomplete` : `"${task.title}" completed`, 'success');
     } catch (err) {
       console.error('Failed to toggle task', err);
     }
@@ -185,8 +194,10 @@ export default function TasksPage() {
         body: JSON.stringify({ id }),
       });
       await fetchTasks();
+      toast('Task deleted', 'success');
     } catch (err) {
       console.error('Failed to delete task', err);
+      toast('Failed to delete task', 'error');
     }
   };
 
@@ -239,7 +250,8 @@ export default function TasksPage() {
 
   const filteredTasks = tasks
     .filter((t) => filterMember === 'all' || t.assignedTo === filterMember)
-    .filter((t) => showCompleted || !t.completed);
+    .filter((t) => showCompleted || !t.completed)
+    .filter((t) => !searchQuery || t.title.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const pendingTasks = filteredTasks.filter((t) => !t.completed);
   const completedTasks = filteredTasks.filter((t) => t.completed);
@@ -328,6 +340,16 @@ export default function TasksPage() {
           <span className="text-xs font-medium uppercase tracking-wide">Filters</span>
         </div>
         <div className="h-5 w-px bg-border" />
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+          <input
+            type="text"
+            placeholder="Search tasks..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="text-sm border border-border rounded-xl pl-9 pr-3 py-2 bg-background focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+          />
+        </div>
         <select
           value={filterMember}
           onChange={(e) => setFilterMember(e.target.value)}
@@ -350,12 +372,12 @@ export default function TasksPage() {
         >
           {showCompleted ? 'Showing completed' : 'Show completed'}
         </button>
-        {filterMember !== 'all' && (
+        {(filterMember !== 'all' || searchQuery) && (
           <button
-            onClick={() => setFilterMember('all')}
+            onClick={() => { setFilterMember('all'); setSearchQuery(''); }}
             className="text-xs text-text-muted hover:text-foreground flex items-center gap-1 ml-auto"
           >
-            <X size={12} /> Clear filter
+            <X size={12} /> Clear filters
           </button>
         )}
       </div>
@@ -367,11 +389,13 @@ export default function TasksPage() {
             <CheckSquare size={28} className="text-white" />
           </div>
           <h3 className="font-semibold text-lg mb-1">
-            {tasks.length === 0 ? 'No tasks yet' : 'All caught up!'}
+            {tasks.length === 0 ? 'No tasks yet' : searchQuery ? 'No tasks match your search' : 'All caught up!'}
           </h3>
           <p className="text-text-muted text-sm">
             {tasks.length === 0
               ? 'Add your first task to get started.'
+              : searchQuery
+              ? 'Try a different search term.'
               : 'Great work, Stephens family! All tasks are done.'}
           </p>
           {tasks.length === 0 && (
@@ -394,7 +418,11 @@ export default function TasksPage() {
             return (
               <div
                 key={task.id}
-                className="bg-surface rounded-2xl border border-border p-4 flex items-center gap-4 group card-hover transition-all"
+                className={`bg-surface rounded-2xl border p-4 flex items-center gap-4 group card-hover transition-all ${
+                  overdue
+                    ? 'border-red-400 border-l-4 bg-red-50 dark:bg-red-950/20'
+                    : 'border-border'
+                }`}
               >
                 {/* Checkbox */}
                 <button

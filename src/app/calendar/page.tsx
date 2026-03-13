@@ -17,6 +17,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import Modal from '@/components/Modal';
+import { useToast } from '@/components/Toast';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import {
   format,
   startOfMonth,
@@ -102,6 +104,7 @@ const defaultFormState = {
 
 export default function CalendarPage() {
   const { data: session } = useSession();
+  const { toast } = useToast();
 
   // Data state
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -118,6 +121,14 @@ export default function CalendarPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [form, setForm] = useState(defaultFormState);
+  const [timeError, setTimeError] = useState('');
+
+  // Confirm dialog state
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; eventId: string; eventTitle: string }>({
+    open: false,
+    eventId: '',
+    eventTitle: '',
+  });
 
   /* ---------------------------------------------------------------- */
   /*  Data fetching                                                    */
@@ -152,11 +163,25 @@ export default function CalendarPage() {
   }, [fetchEvents, fetchMembers]);
 
   /* ---------------------------------------------------------------- */
+  /*  Time validation                                                  */
+  /* ---------------------------------------------------------------- */
+
+  const validateTime = (time: string, endTime: string): boolean => {
+    if (time && endTime && endTime <= time) {
+      setTimeError('End time must be after start time');
+      return false;
+    }
+    setTimeError('');
+    return true;
+  };
+
+  /* ---------------------------------------------------------------- */
   /*  CRUD handlers                                                    */
   /* ---------------------------------------------------------------- */
 
   const handleSaveEvent = async () => {
     if (!form.title || !form.date) return;
+    if (!validateTime(form.time, form.endTime)) return;
     setSaving(true);
     try {
       if (editingEvent) {
@@ -178,6 +203,9 @@ export default function CalendarPage() {
         });
         if (res.ok) {
           await fetchEvents();
+          toast('Event updated successfully', 'success');
+        } else {
+          toast('Failed to update event', 'error');
         }
       } else {
         // CREATE
@@ -197,10 +225,14 @@ export default function CalendarPage() {
         });
         if (res.ok) {
           await fetchEvents();
+          toast('Event created successfully', 'success');
+        } else {
+          toast('Failed to create event', 'error');
         }
       }
     } catch (err) {
       console.error('Failed to save event:', err);
+      toast('Failed to save event', 'error');
     } finally {
       setSaving(false);
       closeModal();
@@ -216,10 +248,18 @@ export default function CalendarPage() {
       });
       if (res.ok) {
         setEvents((prev) => prev.filter((e) => e.id !== id));
+        toast('Event deleted', 'success');
+      } else {
+        toast('Failed to delete event', 'error');
       }
     } catch (err) {
       console.error('Failed to delete event:', err);
+      toast('Failed to delete event', 'error');
     }
+  };
+
+  const promptDeleteEvent = (id: string, title: string) => {
+    setConfirmDelete({ open: true, eventId: id, eventTitle: title });
   };
 
   /* ---------------------------------------------------------------- */
@@ -229,6 +269,7 @@ export default function CalendarPage() {
   const openCreateModal = (date?: Date) => {
     const d = date || selectedDate || new Date();
     setEditingEvent(null);
+    setTimeError('');
     setForm({
       ...defaultFormState,
       date: format(d, 'yyyy-MM-dd'),
@@ -239,6 +280,7 @@ export default function CalendarPage() {
 
   const openEditModal = (event: CalendarEvent) => {
     setEditingEvent(event);
+    setTimeError('');
     setForm({
       title: event.title,
       date: event.date,
@@ -255,6 +297,7 @@ export default function CalendarPage() {
   const closeModal = () => {
     setShowModal(false);
     setEditingEvent(null);
+    setTimeError('');
     setForm(defaultFormState);
   };
 
@@ -530,7 +573,7 @@ export default function CalendarPage() {
                         <button
                           onClick={(ev) => {
                             ev.stopPropagation();
-                            handleDeleteEvent(e.id);
+                            promptDeleteEvent(e.id, e.title);
                           }}
                           className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors"
                         >
@@ -604,7 +647,7 @@ export default function CalendarPage() {
             {editingEvent && (
               <button
                 onClick={() => {
-                  handleDeleteEvent(editingEvent.id);
+                  promptDeleteEvent(editingEvent.id, editingEvent.title);
                   closeModal();
                 }}
                 className="text-red-500 hover:bg-red-50 px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-1.5 transition-colors"
@@ -621,7 +664,7 @@ export default function CalendarPage() {
               </button>
               <button
                 onClick={handleSaveEvent}
-                disabled={!form.title || !form.date || saving}
+                disabled={!form.title || !form.date || saving || !!timeError}
                 className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-5 py-2 rounded-xl text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center gap-2"
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}
@@ -641,6 +684,7 @@ export default function CalendarPage() {
                   placeholder="What's happening?"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  maxLength={100}
                   className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
                   autoFocus
                 />
@@ -661,30 +705,46 @@ export default function CalendarPage() {
               </div>
 
               {/* Time row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-text-muted uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
-                    <Clock size={12} />
-                    Start Time
-                  </label>
-                  <input
-                    type="time"
-                    value={form.time}
-                    onChange={(e) => setForm({ ...form, time: e.target.value })}
-                    className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
-                  />
+              <div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wider block mb-1.5 flex items-center gap-1.5">
+                      <Clock size={12} />
+                      Start Time
+                    </label>
+                    <input
+                      type="time"
+                      value={form.time}
+                      onChange={(e) => {
+                        const newTime = e.target.value;
+                        setForm({ ...form, time: newTime });
+                        validateTime(newTime, form.endTime);
+                      }}
+                      className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wider block mb-1.5">
+                      End Time
+                    </label>
+                    <input
+                      type="time"
+                      value={form.endTime}
+                      onChange={(e) => {
+                        const newEndTime = e.target.value;
+                        setForm({ ...form, endTime: newEndTime });
+                        validateTime(form.time, newEndTime);
+                      }}
+                      className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-text-muted uppercase tracking-wider block mb-1.5">
-                    End Time
-                  </label>
-                  <input
-                    type="time"
-                    value={form.endTime}
-                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                    className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
-                  />
-                </div>
+                {timeError && (
+                  <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                    <Clock size={10} />
+                    {timeError}
+                  </p>
+                )}
               </div>
 
               {/* Member + Category */}
@@ -755,6 +815,17 @@ export default function CalendarPage() {
                 />
               </div>
       </Modal>
+
+      {/* ---- Confirm Delete Dialog ---- */}
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onClose={() => setConfirmDelete({ open: false, eventId: '', eventTitle: '' })}
+        onConfirm={() => handleDeleteEvent(confirmDelete.eventId)}
+        title="Delete Event"
+        message={`Are you sure you want to delete "${confirmDelete.eventTitle}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
     </div>
   );
 }

@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
     if (!title || !body.date || !body.memberId) {
       return NextResponse.json({ error: 'Title, date, and member are required' }, { status: 400 });
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
+      return NextResponse.json({ error: 'Date must be in YYYY-MM-DD format' }, { status: 400 });
+    }
     const event = await prisma.calendarEvent.create({
       data: {
         title,

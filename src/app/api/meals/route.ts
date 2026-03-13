@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
     if (!body.date || !body.meal || !recipe) {
       return NextResponse.json({ error: 'Date, meal type, and recipe are required' }, { status: 400 });
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date)) {
+      return NextResponse.json({ error: 'Date must be in YYYY-MM-DD format' }, { status: 400 });
+    }
     const meal = await prisma.mealPlan.create({
       data: {
         date: sanitizeString(body.date, 20),

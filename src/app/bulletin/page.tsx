@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { Plus, Trash2, Pin, PinOff, Megaphone, Pencil } from 'lucide-react';
+import { Plus, Trash2, Pin, PinOff, Megaphone, Pencil, Search } from 'lucide-react';
 import Modal from '@/components/Modal';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import { useToast } from '@/components/Toast';
 import { format, parseISO } from 'date-fns';
 
 interface BulletinPost {
@@ -27,11 +29,14 @@ const categoryColors: Record<string, string> = {
 
 export default function BulletinPage() {
   const { data: session } = useSession();
+  const { toast } = useToast();
   const [posts, setPosts] = useState<BulletinPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editPost, setEditPost] = useState<BulletinPost | null>(null);
   const [form, setForm] = useState({ title: '', content: '', category: 'note' });
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchPosts = useCallback(async () => {
     try {
@@ -66,12 +71,14 @@ export default function BulletinPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: editPost.id, title: form.title, content: form.content, category: form.category }),
       });
+      toast('Post updated', 'success');
     } else {
       await fetch('/api/bulletin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
+      toast('Post created', 'success');
     }
     setShowModal(false);
     fetchPosts();
@@ -83,6 +90,7 @@ export default function BulletinPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),
     });
+    toast('Post deleted', 'success');
     fetchPosts();
   };
 
@@ -94,6 +102,13 @@ export default function BulletinPage() {
     });
     fetchPosts();
   };
+
+  const filteredPosts = searchQuery
+    ? posts.filter((p) =>
+        p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.content.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : posts;
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
@@ -112,20 +127,32 @@ export default function BulletinPage() {
         </button>
       </div>
 
+      {/* Search Filter */}
+      <div className="relative mb-6">
+        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
+        <input
+          type="text"
+          placeholder="Search posts by title or content..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+      </div>
+
       {loading ? (
         <div className="bg-surface rounded-2xl border border-border p-8 text-center">
           <p className="text-text-muted text-sm">Loading...</p>
         </div>
-      ) : posts.length === 0 ? (
+      ) : filteredPosts.length === 0 ? (
         <div className="bg-surface rounded-2xl border border-border p-8 text-center">
           <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-3">
             <Megaphone size={24} className="text-red-400" />
           </div>
-          <p className="text-text-muted">No posts yet. Be the first to share something!</p>
+          <p className="text-text-muted">{searchQuery ? 'No posts match your search.' : 'No posts yet. Be the first to share something!'}</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {posts.map((post) => (
+          {filteredPosts.map((post) => (
             <div
               key={post.id}
               className={`bg-surface rounded-2xl border p-6 group card-hover ${post.pinned ? 'border-primary/30 bg-primary/[0.02]' : 'border-border'}`}
@@ -148,7 +175,7 @@ export default function BulletinPage() {
                   <button onClick={() => openEdit(post)} className="p-1.5 rounded-lg hover:bg-primary/10 text-text-muted hover:text-primary">
                     <Pencil size={14} />
                   </button>
-                  <button onClick={() => handleDelete(post.id)} className="p-1.5 rounded-lg hover:bg-danger/10 text-danger">
+                  <button onClick={() => setDeleteTarget(post.id)} className="p-1.5 rounded-lg hover:bg-danger/10 text-danger">
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -165,6 +192,17 @@ export default function BulletinPage() {
           ))}
         </div>
       )}
+
+      {/* Delete Confirm Dialog */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => { if (deleteTarget) handleDelete(deleteTarget); }}
+        title="Delete Post"
+        message="Are you sure you want to delete this post? This action cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+      />
 
       {/* Create / Edit Modal */}
       <Modal

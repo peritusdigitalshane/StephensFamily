@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
-import { Plus, Trash2, Check, ShoppingCart, Pencil } from 'lucide-react';
+import { Plus, Trash2, Check, ShoppingCart, Pencil, Search } from 'lucide-react';
 import Modal from '@/components/Modal';
+import ConfirmDialog from '@/components/ConfirmDialog';
+import { useToast } from '@/components/Toast';
 
 interface ShoppingItem {
   id: string;
@@ -18,10 +20,13 @@ const categories = ['groceries', 'household', 'school', 'other'];
 
 export default function ShoppingPage() {
   const { data: session } = useSession();
+  const { toast } = useToast();
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [newItem, setNewItem] = useState({ name: '', quantity: '', category: 'groceries' });
   const [editItem, setEditItem] = useState<ShoppingItem | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchItems = useCallback(async () => {
     try {
@@ -43,6 +48,7 @@ export default function ShoppingPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newItem),
     });
+    toast(`Added "${newItem.name}" to the list`, 'success');
     setNewItem({ name: '', quantity: '', category: 'groceries' });
     fetchItems();
   };
@@ -53,6 +59,7 @@ export default function ShoppingPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: item.id, checked: !item.checked }),
     });
+    toast(item.checked ? `Unchecked "${item.name}"` : `Checked off "${item.name}"`, 'success');
     fetchItems();
   };
 
@@ -82,15 +89,21 @@ export default function ShoppingPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'clearChecked' }),
     });
+    toast('Cleared all checked items', 'success');
     fetchItems();
   };
 
   const unchecked = items.filter((i) => !i.checked);
   const checked = items.filter((i) => i.checked);
 
+  const filterBySearch = (list: ShoppingItem[]) =>
+    searchQuery ? list.filter((i) => i.name.toLowerCase().includes(searchQuery.toLowerCase())) : list;
+
   const groupedItems = categories
-    .map((cat) => ({ category: cat, items: unchecked.filter((i) => i.category === cat) }))
+    .map((cat) => ({ category: cat, items: filterBySearch(unchecked).filter((i) => i.category === cat) }))
     .filter((g) => g.items.length > 0);
+
+  const filteredChecked = filterBySearch(checked);
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
@@ -107,7 +120,7 @@ export default function ShoppingPage() {
       </div>
 
       {/* Quick Add */}
-      <div className="bg-surface rounded-2xl border border-border p-4 mb-6">
+      <div className="bg-surface rounded-2xl border border-border p-4 mb-4">
         <div className="flex gap-3">
           <input
             type="text"
@@ -118,7 +131,8 @@ export default function ShoppingPage() {
             className="flex-1 border border-border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
           <input
-            type="text"
+            type="number"
+            min="1"
             placeholder="Qty"
             value={newItem.quantity}
             onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
@@ -142,6 +156,18 @@ export default function ShoppingPage() {
         </div>
       </div>
 
+      {/* Search Filter */}
+      <div className="relative mb-6">
+        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
+        <input
+          type="text"
+          placeholder="Search items..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm bg-surface focus:outline-none focus:ring-2 focus:ring-primary/20"
+        />
+      </div>
+
       {loading ? (
         <div className="bg-surface rounded-2xl border border-border p-8 text-center">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center mx-auto mb-3 animate-pulse">
@@ -154,7 +180,7 @@ export default function ShoppingPage() {
           <div className="w-14 h-14 rounded-2xl bg-pink-50 flex items-center justify-center mx-auto mb-3">
             <ShoppingCart size={24} className="text-pink-400" />
           </div>
-          <p className="text-text-muted">Shopping list is empty! Add items above.</p>
+          <p className="text-text-muted">{searchQuery ? 'No items match your search.' : 'Shopping list is empty! Add items above.'}</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -190,14 +216,14 @@ export default function ShoppingPage() {
       )}
 
       {/* Checked Items */}
-      {checked.length > 0 && (
+      {filteredChecked.length > 0 && (
         <div className="mt-6">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-text-muted">Checked off ({checked.length})</h3>
-            <button onClick={handleClearChecked} className="text-xs text-danger hover:underline">Clear all</button>
+            <h3 className="text-sm font-medium text-text-muted">Checked off ({filteredChecked.length})</h3>
+            <button onClick={() => setShowClearConfirm(true)} className="text-xs text-danger hover:underline">Clear all</button>
           </div>
           <div className="bg-surface rounded-2xl border border-border divide-y divide-border opacity-60">
-            {checked.map((item) => (
+            {filteredChecked.map((item) => (
               <div key={item.id} className="flex items-center gap-3 px-4 py-3 group">
                 <button
                   onClick={() => handleToggle(item)}
@@ -211,6 +237,17 @@ export default function ShoppingPage() {
           </div>
         </div>
       )}
+
+      {/* Clear Checked Confirm Dialog */}
+      <ConfirmDialog
+        open={showClearConfirm}
+        onClose={() => setShowClearConfirm(false)}
+        onConfirm={handleClearChecked}
+        title="Clear Checked Items"
+        message="Are you sure you want to remove all checked items from the list? This cannot be undone."
+        confirmLabel="Clear All"
+        confirmVariant="danger"
+      />
 
       {/* Edit Modal */}
       <Modal
@@ -234,7 +271,8 @@ export default function ShoppingPage() {
             <div>
               <label className="text-sm font-medium block mb-1.5">Quantity</label>
               <input
-                type="text"
+                type="number"
+                min="1"
                 value={editItem.quantity}
                 onChange={(e) => setEditItem({ ...editItem, quantity: e.target.value })}
                 className="w-full border border-border rounded-xl px-4 py-2.5 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"

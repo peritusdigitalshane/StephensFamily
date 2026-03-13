@@ -73,7 +73,11 @@ export async function PATCH(req: NextRequest) {
       return forbiddenResponse();
     }
 
-    const safeData = pickFields(body, ['title', 'content', 'category', 'pinned'], 5000);
+    const allowedFields = ['title', 'content', 'category'];
+    if (auth.user.role === 'superadmin' || auth.user.role === 'parent') {
+      allowedFields.push('pinned');
+    }
+    const safeData = pickFields(body, allowedFields, 5000);
     const post = await prisma.bulletinPost.update({ where: { id }, data: safeData });
     return NextResponse.json(post);
   } catch (error) {

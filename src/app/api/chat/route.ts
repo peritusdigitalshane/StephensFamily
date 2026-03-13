@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Chat API error:', message);
     return NextResponse.json(
-      { error: `Something went wrong: ${message}` },
+      { error: 'Something went wrong. Please try again later.' },
       { status: 500 }
     );
   }

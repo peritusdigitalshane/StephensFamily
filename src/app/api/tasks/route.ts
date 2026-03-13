@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
     if (!title || !body.assignedTo) {
       return NextResponse.json({ error: 'Title and assignee are required' }, { status: 400 });
     }
+    if (body.dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(body.dueDate)) {
+      return NextResponse.json({ error: 'Due date must be in YYYY-MM-DD format' }, { status: 400 });
+    }
     const task = await prisma.task.create({
       data: {
         title,
