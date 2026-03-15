@@ -3,6 +3,8 @@ FROM node:22-alpine AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY prisma.config.ts ./
+COPY prisma/schema.prisma ./prisma/schema.prisma
 RUN npm ci
 
 # ── Stage 2: Build the application ──
