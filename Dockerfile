@@ -34,9 +34,13 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Copy Prisma schema + migrations for runtime migration
+# Copy Prisma config, schema, migrations, and generated client for runtime
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/src/generated ./src/generated
+
+# Install prisma CLI for runtime migrations (devDependency, not in standalone)
+RUN npm install --no-save prisma@7
 
 # Create data directory for SQLite and set permissions
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app
